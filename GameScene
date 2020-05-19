@@ -1,0 +1,632 @@
+//
+//  GameScene.swift
+//  HelicopterRide
+//
+//  Created by Michael Calmette on 12/31/19.
+//  Copyright © 2019 Michael Calmette. All rights reserved.
+//
+
+import SpriteKit
+import GameplayKit
+
+var gameScore = 0
+var totalDistance = gameScore
+var totalGamesPlayed = 0
+var gameLevelStatus = 0
+var levelSpeedForMult = 0
+//var changeBWSceneScore = gameScore
+var secondaryLevelNumber = 0
+var sss = 0
+
+class GameScene: SKScene, SKPhysicsContactDelegate {
+    
+    var hel = SKSpriteNode()
+    var helFrames: [SKTexture] = []
+    var levelNumber = 0
+    var currentGameState = gameState.preGame  //what state are we currently in
+    let scoreLabel = SKLabelNode(fontNamed: "The Bold Font")
+    let livesLabel = SKLabelNode(fontNamed: "The Bold Font")
+    let tapToBegin = SKLabelNode(fontNamed: "The Bold Font")
+    let startButton = SKLabelNode(fontNamed: "The Bold Font")
+    var shrinkOrGrow = 0
+    var leftButtonIsPressed = false
+    var rightButtonIsPressed = false
+    var numberOfLivesLeft = 3
+    
+    
+    struct physicsCategories{
+        static let None : UInt32 = 0 //category none rep by 0
+        static let Player : UInt32 = 0b1 //category player rep by 1
+        static let Barrier : UInt32 = 0b10 //category barrier rep by 2
+        static let Shrink : UInt32 = 0b11 //categor shrink rep by this
+        
+    }
+    
+    enum gameState{
+        case preGame //before
+        case inGame //during
+        case afterGame //after
+    }
+
+    override func didMove(to view: SKView) {
+        adHasBeenWatched = false
+        gameHasJustBeenPlayed = true
+        
+        if(gameLevelStatus == 1){
+            levelNumber = secondaryLevelNumber
+        }else{
+            levelNumber = 0
+        }
+        
+        /*let defaultss = UserDefaults()
+        var numGamesNumber = defaultss.integer(forKey: "totalG")
+        numGamesNumber += 1
+        
+        totalGamesPlayed = numGamesNumber
+        defaultss.set(numGamesNumber, forKey: "totalG")*/
+        
+        //debugPlayableArea()
+        
+        bannerView.isHidden = true
+        
+        
+        for i in 0...1{
+        let background = SKSpriteNode(imageNamed: "cityTest3")
+        background.size = self.size
+            background.anchorPoint = CGPoint(x: 0, y: 0.5)
+        background.position = CGPoint(x: self.size.width*CGFloat(i),
+                                      y: self.size.height/2)
+        background.zPosition = 0
+            background.name = "Background"
+        self.addChild(background)
+        }
+        
+        self.physicsWorld.contactDelegate = self
+        
+        //buildHelicopter()
+        //animateHel()
+        let defa = UserDefaults()
+        let selectHel = defa.integer(forKey: "helicopterSelected") //loaded with key
+        sss = selectHel
+        //will be zero or current game score
+        if(gameLevelStatus == 0){
+            gameScore = 0
+        }
+        buildHelicopter()
+        animateHel()
+        
+        scoreLabel.fontSize = 75
+        scoreLabel.fontColor = SKColor.black
+        scoreLabel.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.center
+        scoreLabel.verticalAlignmentMode = .top
+        //scoreLabel.position = CGPoint(x: frame.midX, y: self.size.height * 0.8) //old one
+        scoreLabel.position = CGPoint(x: self.size.width * 0.3, y: self.size.height * 0.8)
+        //scoreLabel.position = CGPoint(x: frame.midX, y: (self.view?.frame.height)! * 0.8)
+        scoreLabel.zPosition = 100  //make sure its always on top
+        self.addChild(scoreLabel)
+        
+        livesLabel.fontSize = 75
+        livesLabel.fontColor = SKColor.black
+        livesLabel.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.center
+        livesLabel.verticalAlignmentMode = .top
+        livesLabel.position = CGPoint(x: self.size.width * 0.7, y: self.size.height * 0.8)
+        //scoreLabel.position = CGPoint(x: frame.midX, y: (self.view?.frame.height)! * 0.8)
+        livesLabel.zPosition = 100  //make sure its always on top
+        //livesLabel.text = "Lives: \(numberOfLivesLeft)"
+        self.addChild(livesLabel)
+        
+        
+        
+        startButton.fontSize = 100
+        startButton.fontColor = SKColor.black
+        startButton.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.center
+        startButton.verticalAlignmentMode = .top
+        startButton.position = CGPoint(x: frame.midX, y: self.size.height * 0.7)
+        //scoreLabel.position = CGPoint(x: frame.midX, y: (self.view?.frame.height)! * 0.8)
+        startButton.zPosition = 100  //make sure its always on top
+        startButton.name = "theStartBut"
+        startButton.text = "Start"
+        self.addChild(startButton)
+    
+        /*let moveOntoScreenAction = SKAction.moveTo(y: self.size.height * 0.8, duration: 1.0)
+        scoreLabel.run(moveOntoScreenAction)*/
+        
+    }
+    
+    func startButtonFunc(){
+        startButton.removeFromParent()
+        startGame()
+    }
+    
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+       
+        for touch: AnyObject in touches{
+            let pointOfTouch = touch.location(in: self)
+            let nodeTapped = atPoint(pointOfTouch)
+            if(pointOfTouch.x > frame.midX){
+                rightButtonIsPressed = true
+                moveUp()
+            }else if(pointOfTouch.x < frame.midX){
+                leftButtonIsPressed = true
+                moveDown()
+            }
+            if(nodeTapped.name == "theStartBut"){
+                startButtonFunc()
+            }
+           
+        }
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if leftButtonIsPressed == true {
+            leftButtonIsPressed = false
+        }
+        if rightButtonIsPressed == true {
+            rightButtonIsPressed = false
+        }
+    }
+    
+    var lastUpdateTime: TimeInterval = 0
+    var deltaFrameTime: TimeInterval = 0
+    let amountToMovePerSecond: CGFloat = 600.0
+    //if var you can change it and speed up or slow down
+    //then can make it go faster as the game continues
+    
+    override func update(_ currentTime: TimeInterval) {
+        if(leftButtonIsPressed == true){
+            moveDown()
+        }
+        if(rightButtonIsPressed == true){
+            moveUp()
+        }
+        
+        if lastUpdateTime == 0 {
+            lastUpdateTime = currentTime
+        }else{
+            deltaFrameTime = currentTime - lastUpdateTime
+            lastUpdateTime = currentTime
+        }
+        
+        let amountToMoveBackground = amountToMovePerSecond * CGFloat(deltaFrameTime)
+        self.enumerateChildNodes(withName: "Background"){
+            background, stop in
+            
+            if self.currentGameState == gameState.inGame{
+            background.position.x -= amountToMoveBackground
+            }
+            if background.position.x < -self.size.width {
+                background.position.x += self.size.width*2
+            }
+        }
+        
+    }
+    
+    func moveDown() {
+        let maxAspectRatio: CGFloat = 16.0/9.0
+        let playableHeight = size.height / maxAspectRatio
+        let margin = (size.height - playableHeight) / 2.0
+        let helSize = hel.size.height / 4
+        
+        /*if(hel.position.y > self.size.height * 0.2){
+            hel.position.y -= 15
+        }*/
+        if(hel.position.y > (self.size.height * 0.0) + margin + helSize){
+            hel.position.y -= 15
+        }
+    }
+    
+    func moveUp() {
+        let maxAspectRatio: CGFloat = 16.0/9.0
+        let playableHeight = size.height / maxAspectRatio
+        let margin = (size.height - playableHeight) / 2.0
+        let helSize = hel.size.height / 4
+        
+        if(hel.position.y < self.size.height - margin - helSize){
+            hel.position.y += 15
+        }
+    }
+    
+    
+    func startGame() {
+        currentGameState = gameState.inGame
+         
+        updateLives()
+        
+        let fadeOutAction = SKAction.fadeOut(withDuration: 0.5)
+        let deleteAction = SKAction.removeFromParent()
+        let deleteSequence = SKAction.sequence([fadeOutAction,deleteAction])
+        tapToBegin.run(deleteSequence)
+        
+        let moveHelicopterOntoScreen = SKAction.moveTo(x: self.size.width * 0.1, duration: 0.5)
+        let startLevelAction = SKAction.run(startNewLevel)
+        let startGameSequence = SKAction.sequence([moveHelicopterOntoScreen, startLevelAction])
+        hel.run(startGameSequence)
+    
+    }
+    
+    
+   /* func buildHelicopter() {
+        let helicopterAnimatedAtlas = SKTextureAtlas(named: "helicopter")
+        var moveFrames: [SKTexture] = []
+        let numImages = helicopterAnimatedAtlas.textureNames.count
+        for i in 1...numImages{
+            let helicopterTexturename = "hel\(i)"
+            moveFrames.append(helicopterAnimatedAtlas.textureNamed(helicopterTexturename))
+        }
+        helFrames = moveFrames
+        let firstFrameTexture = helFrames[0]
+        hel = SKSpriteNode(texture: firstFrameTexture)
+        
+        hel.position = CGPoint(x: self.size.width * 0.5, y: self.size.height * 0.5)
+        hel.zPosition = 1
+        hel.setScale(2.0)
+        
+        hel.physicsBody = SKPhysicsBody(rectangleOf: hel.size)
+        hel.physicsBody!.affectedByGravity = false
+        hel.physicsBody!.categoryBitMask = physicsCategories.Player
+        hel.physicsBody!.collisionBitMask = physicsCategories.None
+        hel.physicsBody!.contactTestBitMask = physicsCategories.Barrier
+        
+        addChild(hel)
+    }*/
+    
+    func buildHelicopter() {
+        if(sss == 0){
+            let helicopterAnimatedAtlas = SKTextureAtlas(named: "helicopter")
+            var moveFrames: [SKTexture] = []
+            let numImages = helicopterAnimatedAtlas.textureNames.count
+            for i in 1...numImages{
+                let helicopterTexturename = "hel\(i)-removebg"
+                moveFrames.append(helicopterAnimatedAtlas.textureNamed(helicopterTexturename))
+            }
+            helFrames = moveFrames
+        }
+        else if(sss == 1){
+            let helicopterAnimatedAtlas = SKTextureAtlas(named: "redhelicopter")
+            var moveFrames: [SKTexture] = []
+            let numImages = helicopterAnimatedAtlas.textureNames.count
+            for i in 1...numImages{
+                let helicopterTexturename = "redHel\(i)"
+                moveFrames.append(helicopterAnimatedAtlas.textureNamed(helicopterTexturename))
+            }
+            helFrames = moveFrames
+        }else if(sss == 2){
+            let helicopterAnimatedAtlas = SKTextureAtlas(named: "bluehelicopter")
+            var moveFrames: [SKTexture] = []
+            let numImages = helicopterAnimatedAtlas.textureNames.count
+            for i in 1...numImages{
+            let helicopterTexturename = "blueHel\(i)"
+                moveFrames.append(helicopterAnimatedAtlas.textureNamed(helicopterTexturename))
+                }
+            helFrames = moveFrames
+        }else if(sss == 3){
+            let helicopterAnimatedAtlas = SKTextureAtlas(named: "goldhelicopter")
+            var moveFrames: [SKTexture] = []
+            let numImages = helicopterAnimatedAtlas.textureNames.count
+            for i in 1...numImages{
+            let helicopterTexturename = "goldHel\(i)"
+                moveFrames.append(helicopterAnimatedAtlas.textureNamed(helicopterTexturename))
+                }
+            helFrames = moveFrames
+        }else {
+            let helicopterAnimatedAtlas = SKTextureAtlas(named: "helicopter")
+            var moveFrames: [SKTexture] = []
+            let numImages = helicopterAnimatedAtlas.textureNames.count
+            for i in 1...numImages{
+            let helicopterTexturename = "hel\(i)"
+                moveFrames.append(helicopterAnimatedAtlas.textureNamed(helicopterTexturename))
+                }
+            helFrames = moveFrames
+        }
+
+        let firstFrameTexture = helFrames[0]
+        hel = SKSpriteNode(texture: firstFrameTexture)
+        
+        hel.position = CGPoint(x: self.size.width * 0.5, y: self.size.height * 0.5)
+        hel.zPosition = 1
+        hel.setScale(2.0)
+        
+        hel.physicsBody = SKPhysicsBody(rectangleOf: hel.size)
+        hel.physicsBody!.affectedByGravity = false
+        hel.physicsBody!.categoryBitMask = physicsCategories.Player
+        hel.physicsBody!.collisionBitMask = physicsCategories.None
+        hel.physicsBody!.contactTestBitMask = physicsCategories.Barrier
+        
+        addChild(hel)
+    }
+    
+    func animateHel() {
+        hel.run(SKAction.repeatForever(
+            SKAction.animate(
+                with: helFrames,
+                timePerFrame: 0.1,
+                resize: false,
+                restore: true)),
+            withKey: "movingInPlacehel")
+    }
+    
+    
+    func random() -> CGFloat {
+        //0xFFFFFFFF
+        return CGFloat(Float(arc4random()) / 4294967296)
+    }
+    func random(min: CGFloat, max: CGFloat) -> CGFloat {
+        /*var min = self.size.height * 0.2
+        var max = self.size.height * 0.9
+        let randomDouble = Double.random(in: 100...900)
+        return CGFloat(randomDouble)*/
+        return random() * (max - min) + min
+    }
+    
+    func generateBarrier() {
+        
+        let randomYstart = random(min: self.size.height * 0.9 , max: self.size.height * 0.2)
+        let randomYend = random(min: self.size.height * 0.9, max: self.size.height * 0.2)
+        let startPoint = CGPoint(x: self.size.width , y: randomYstart)
+        let endPoint = CGPoint(x: 0, y: randomYend)
+        
+        let barrier = SKSpriteNode(imageNamed: "rect")
+        barrier.name = "BarrierRef"
+        barrier.setScale(2.5)
+        barrier.position = startPoint
+        barrier.zPosition = 2
+      
+        barrier.physicsBody = SKPhysicsBody(rectangleOf: barrier.size)
+        barrier.physicsBody!.affectedByGravity = false
+        barrier.physicsBody!.categoryBitMask = physicsCategories.Barrier
+        barrier.physicsBody!.collisionBitMask = physicsCategories.None
+        barrier.physicsBody!.contactTestBitMask = physicsCategories.Player
+        
+        self.addChild(barrier)
+        
+        //add varibale to change duration
+        
+        let moveBarrier = SKAction.move(to: endPoint, duration: 2.0) //2.5
+        let deleteBarrier = SKAction.removeFromParent()
+        let barrierSequence = SKAction.sequence([moveBarrier, deleteBarrier])
+        
+        if(currentGameState == gameState.inGame){
+            barrier.run(barrierSequence)
+        }
+          
+    }
+    
+    func startShrink() {
+        let randomYstart = random(min: self.size.height * 0.9 , max: self.size.height * 0.2)
+        let randomYend = random(min: self.size.height * 0.9, max: self.size.height * 0.2)
+        let startPoint = CGPoint(x: self.size.width , y: randomYstart)
+        let endPoint = CGPoint(x: 0, y: randomYend)
+        let randomScale = random(min:0, max: 100)
+        
+        if(randomScale >= 50){
+            shrinkOrGrow = 1
+        }else{
+            shrinkOrGrow = 0
+        }
+
+        let shrinkHel = SKSpriteNode(imageNamed: "downArrow")
+        shrinkHel.name = "ShrinkRef"
+        shrinkHel.setScale(2)
+        shrinkHel.position = startPoint
+        shrinkHel.zPosition = 2
+        
+        shrinkHel.physicsBody = SKPhysicsBody(rectangleOf: shrinkHel.size)
+        shrinkHel.physicsBody!.affectedByGravity = false
+        shrinkHel.physicsBody!.categoryBitMask = physicsCategories.Shrink
+        shrinkHel.physicsBody!.collisionBitMask = physicsCategories.None
+        shrinkHel.physicsBody!.contactTestBitMask = physicsCategories.Player
+        
+        self.addChild(shrinkHel)
+        
+        let moveShrink = SKAction.move(to: endPoint, duration: 2.5)
+        let deleteShrink = SKAction.removeFromParent()
+        let shrinkSequence = SKAction.sequence([moveShrink,deleteShrink])
+        
+        if(currentGameState == gameState.inGame){
+            shrinkHel.run(shrinkSequence)
+        }
+        
+        if(shrinkOrGrow == 1){
+            shrinkHel.run(SKAction.rotate(byAngle: CGFloat(Double.pi), duration: 0.1))
+        }
+    }
+    
+    
+    func startNewLevel() {
+        levelNumber += 1
+        bannerView.isHidden = true
+        
+        if self.action(forKey: "spawningBarriers") != nil {
+            self.removeAction(forKey: "spawningBarriers")
+        }
+        
+        var levelDuration = 0.8
+    
+        switch levelNumber {
+            case 1: levelDuration = 0.7
+            case 2: levelDuration = 0.6
+            case 3: levelDuration = 0.5
+            case 4: levelDuration = 0.4
+            case 5: levelDuration = 0.42
+            case 6: levelDuration = 0.4
+            case 7: levelDuration = 0.37
+            case 8: levelDuration = 0.35
+            case 9: levelDuration = 0.32
+            case 10: levelDuration = 0.3
+                default: levelDuration = 0.3
+        }
+        
+        let spawn = SKAction.run(generateBarrier)
+        let waitForSpawn = SKAction.wait(forDuration: levelDuration)
+        let spawnSequence = SKAction.sequence([waitForSpawn, spawn])
+        let spawnForever = SKAction.repeatForever(spawnSequence)
+        self.run(spawnForever, withKey: "spawningBarriers")
+        
+        let scoreAdd = SKAction.run(addScore)
+        let waitToAddScore = SKAction.wait(forDuration: levelDuration)
+        let scoreSequence = SKAction.sequence([scoreAdd, waitToAddScore])
+        let scoreForever = SKAction.repeatForever(scoreSequence)
+        self.run(scoreForever, withKey: "runningScore")
+        
+        //randomly select shrink, grow, turrent
+        let shrink = SKAction.run(startShrink)
+        let waitToShrink = SKAction.wait(forDuration: 5)
+        let shrinkSequence = SKAction.sequence([waitToShrink,shrink])
+        let shrinkForever = SKAction.repeatForever(shrinkSequence)
+        self.run(shrinkForever, withKey: "runningShrink")
+        
+    }
+    
+    func didBegin(_ contact: SKPhysicsContact) {
+        var body1 = SKPhysicsBody()
+        var body2 = SKPhysicsBody()
+        //var body3 = SKPhysicsBody()
+        
+        //0 or 1 in struct
+        if(contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask){
+            body1 = contact.bodyA
+            body2 = contact.bodyB
+        }else if(contact.bodyA.categoryBitMask > contact.bodyB.categoryBitMask){
+            body1 = contact.bodyB
+            body2 = contact.bodyA
+        }
+        
+        
+        
+        if(body1.categoryBitMask == physicsCategories.Player && body2.categoryBitMask == physicsCategories.Barrier){
+            //if player hits the barrier
+            numberOfLivesLeft -= 1
+            updateLives()
+            if(body1.node != nil) {
+                if(numberOfLivesLeft == 0){
+                    spawnExplosion(spawnPosition: body1.node!.position)
+                }
+            }
+            body2.node?.removeFromParent()
+            if(numberOfLivesLeft == 0){
+                body1.node?.removeFromParent() //delete both
+                bannerView.isHidden = false
+                runGameOver()
+            }
+        } else if(body1.categoryBitMask == physicsCategories.Player && body2.categoryBitMask == physicsCategories.Shrink){
+            
+            body2.node?.removeFromParent()
+            if(shrinkOrGrow == 0){
+                shrinkHelicopter()
+            }else{
+                growHelicopter()
+            }
+            
+        }
+        
+    }
+    
+    
+    func spawnExplosion(spawnPosition: CGPoint) {
+        let explosion = SKSpriteNode(imageNamed: "explosion")
+        explosion.position = spawnPosition
+        explosion.setScale(0.0)
+        explosion.zPosition = 3
+        self.addChild(explosion)
+        
+        let scaleIn = SKAction.scale(to: 1, duration: 0.1)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.2)
+        let deleteExplosion = SKAction.removeFromParent()
+        
+        let explosionSequence = SKAction.sequence([scaleIn, fadeOut, deleteExplosion])
+        explosion.run(explosionSequence)
+    }
+    
+    
+    func shrinkHelicopter(){
+        let scaleIn = SKAction.scale(to: 1, duration: 0.5)
+        let waitPeriod = SKAction.wait(forDuration: 3)
+        let scaleOut = SKAction.scale(to: 2.0, duration: 0.5)
+
+        let scaleSequence = SKAction.sequence([scaleIn,waitPeriod,scaleOut])
+        hel.run(scaleSequence)
+    }
+    
+    func growHelicopter(){
+        let scaleIn = SKAction.scale(to: 3.0, duration: 0.5)
+        let waitPeriod = SKAction.wait(forDuration: 3)
+        let scaleOut = SKAction.scale(to: 2.0, duration: 0.5)
+        
+        let scaleSequence = SKAction.sequence([scaleIn,waitPeriod,scaleOut])
+        hel.run(scaleSequence)
+    }
+    
+    
+    func addScore() {
+        gameScore+=1
+        scoreLabel.text = "Score: \(gameScore)"
+        
+        if(gameScore == 10 || gameScore == 30 || gameScore == 50 || gameScore == 70 || gameScore == 90 || gameScore == 110 || gameScore == 140 || gameScore == 180 || gameScore == 220 || gameScore == 300){
+            startNewLevel()
+        }
+        
+    }
+    
+    func updateLives() {
+         livesLabel.text = "Lives: \(numberOfLivesLeft)"
+    }
+    
+    
+    func runGameOver() {
+        currentGameState = gameState.afterGame
+        //changeBWSceneScore = gameScore
+        gameLevelStatus+=1
+        
+        self.removeAllActions() // stops all actions
+        //stops barriers
+        self.enumerateChildNodes(withName: "BarrierRef") {
+            (missile, stop) in
+            
+            missile.removeAllActions()
+        }
+        
+        self.enumerateChildNodes(withName: "ShrinkRef") {
+            (shr, stop) in
+            
+            shr.removeAllActions()
+        }
+       
+        if(gameLevelStatus == 2){
+           let changeIt = SKAction.run(goGameOver)
+           let wait = SKAction.wait(forDuration: 1)
+           let changeItSeq = SKAction.sequence([wait,changeIt])
+           self.run(changeItSeq)
+        }else{
+           let changeSceneAction = SKAction.run(changeScene)
+           let waitToChangeScene = SKAction.wait(forDuration: 1)
+           let changeSceneSequence = SKAction.sequence([waitToChangeScene,changeSceneAction])
+           self.run(changeSceneSequence)
+        }
+       
+        
+    }
+        
+
+    func changeScene() {
+        secondaryLevelNumber = levelNumber
+        let sceneToMoveTo = PostGame(size: self.size) //moves scene over with same screen size
+        sceneToMoveTo.scaleMode = self.scaleMode
+        let myTransition = SKTransition.fade(withDuration: 0.5)
+        //self.view!.presentScene(sceneToMoveTo, transition: myTransition)
+        scene?.view?.presentScene(sceneToMoveTo, transition: myTransition)
+    }
+    
+    func goGameOver(){
+        gameLevelStatus = 0
+        secondaryLevelNumber = 0
+        let sceneToMoveTo = GameOverScene(size: self.size) //moves scene over with same screen size
+        sceneToMoveTo.scaleMode = self.scaleMode
+        let myTransition = SKTransition.fade(withDuration: 0.5)
+        //self.view!.presentScene(sceneToMoveTo, transition: myTransition)
+        scene?.view?.presentScene(sceneToMoveTo, transition: myTransition)
+    }
+    
+
+    
+}
